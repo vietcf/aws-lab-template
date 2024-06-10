@@ -1,0 +1,149 @@
+Description: 'This template deploys a EKS Cluster'
+###########################################
+#                                         #
+#Init parameter for eks cluster           #
+#                                         #
+###########################################
+Parameters:
+  Environment:
+    Type: String
+    Default: Prod
+  EksName:
+    Type: String
+    Default: demo
+  EksVersion:
+    Type: String
+    Default: 1.30
+  EksClusterMinSize:
+    Type: String
+    Default: 1
+  EksClusterDesiredSize:
+    Type: String
+    Default: 1
+  EksClusterMaxSize:
+    Type: String
+    Default: 2
+  EksNodeInstanceType:
+    Type: String
+    Default: t2.small
+  # EksNodeKeyName:
+  #   Type: AWS::EC2::KeyPair::KeyName
+  #   Description: EC2 key pair to associate with the worker nodes
+  VPC:
+    Description: VPC ID 
+    Type: String
+  PrivateSubnet01:
+    Description: Private Subnet1 ID
+    Type: String
+  PrivateSubnet02:
+    Description: Private Subnet2 ID
+    Type: String
+
+###########################################
+#                                         #
+#Create resource                          #
+#                                         #
+###########################################
+Resources:
+  #Create Role for ControlPlance
+  EksRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub ${EksName}-control-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - eks.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+        - arn:aws:iam::aws:policy/AmazonEKSServicePolicy
+  #Create Role for NodeInstanceRole
+  NodeInstanceRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: !Sub ${EksName}-node-instance-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - "sts:AssumeRole"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+        - "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+        - "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+
+  #Create Security Group for controlplane and node group
+  ControlPlaneSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Cluster communication with worker nodes
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: Allow all inbound traffic
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic
+
+  EksNodeGroupSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties: 
+      GroupDescription: Security Group for EKS Node Group
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: Allow all inbound traffic
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic
+  
+  #Create Cluster
+  EKSCluster:
+    Type: AWS::EKS::Cluster
+    Properties:
+      Name: !Join [ "-", [!Ref Environment, !Ref EksName] ]
+      Version: !Ref EksVersion
+      RoleArn: !GetAtt EksRole.Arn
+      ResourcesVpcConfig:
+        SecurityGroupIds:
+        - !Ref ControlPlaneSecurityGroup
+        EndpointPublicAccess: true
+        # EndpointPrivateAccess: true
+        SubnetIds:
+        - !Ref PrivateSubnet01
+        - !Ref PrivateSubnet02
+
+  #Create node group for Cluster
+  EKSNodegroup:
+    Type: 'AWS::EKS::Nodegroup'
+    Properties:
+      ClusterName: !Ref EKSCluster
+      NodeRole: !GetAtt NodeInstanceRole.Arn
+      ScalingConfig:
+        MinSize: !Ref EksClusterMinSize
+        DesiredSize: !Ref EksClusterDesiredSize
+        MaxSize: !Ref EksClusterMaxSize
+      Subnets:
+        - !Ref PrivateSubnet01
+        - !Ref PrivateSubnet02
+      InstanceTypes:
+        - !Ref EksNodeInstanceType
+      # ImageId: 
+      # KeyName: !Ref EksNodeKeyName
+
+Outputs:
+  EksClusterName: 
+    Value: !Ref EKSCluster

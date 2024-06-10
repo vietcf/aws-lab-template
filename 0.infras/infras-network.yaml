@@ -1,6 +1,4 @@
-# Usage from command line:
-#   aws cloudformation --region <<YOUR-REGION>> create-stack --stack-name vpc- --template-body file://vpc-setup.yaml
-    
+# aws cloudformation --region <<YOUR-REGION>> create-stack --stack-name vpc- --template-body file://vpc-setup.yaml
     
 Description:  This template deploys a VPC, with a pair of public and private subnets spread
   across two Availability Zones. It deploys an internet gateway, with a default
